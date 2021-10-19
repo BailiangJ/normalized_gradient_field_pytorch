@@ -24,7 +24,7 @@ def spatial_filter_nd(x: torch.Tensor, kernel: torch.Tensor, mode: str = 'replic
     """
 
     n_dim = x.dim() - 2
-    if n_dim <= 0 or n_dim > 2:
+    if n_dim <= 0 or n_dim > 3:
         raise AssertionError(f"the spatial dims of input should be 1, 2 or 3, get{n_dim}")
     conv = _func_conv_nd_table[n_dim]
 

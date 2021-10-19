@@ -66,8 +66,7 @@ class NormalizedGradientField2d(_Loss):
                  grad_method: str = 'default',
                  gauss_sigma: float = None,
                  gauss_truncate: float = 4.0,
-                 eps_src: float = 1.0,
-                 eps_tar: float = 1.0,
+                 eps: Optional[float] = 1e-5,
                  mm_spacing: Optional[Union[int, float, Tuple[int, ...], List[int]]] = None,
                  reduction: Union[LossReduction, str] = LossReduction.MEAN) -> None:
         """
@@ -89,14 +88,15 @@ class NormalizedGradientField2d(_Loss):
         """
         super().__init__(reduction=LossReduction(reduction).value)
 
-        self.eps_src = eps_src
-        self.eps_tar = eps_tar
+        self.eps = eps
 
         if isinstance(mm_spacing, (int, float)):
-            self.dvol = mm_spacing ** 2
+            # self.dvol = mm_spacing ** 2
+            self.mm_spacing = [mm_spacing] * 2
         if isinstance(mm_spacing, (list, tuple)):
             if len(mm_spacing) == 2:
-                self.dvol = np.prod(mm_spacing)
+                # self.dvol = np.prod(mm_spacing)
+                self.mm_spacing = mm_spacing
             else:
                 raise ValueError(f'expected length 2 spacing, got {mm_spacing}')
 
@@ -109,8 +109,6 @@ class NormalizedGradientField2d(_Loss):
 
         self.gauss_kernel_x = None
         self.gauss_kernel_y = None
-
-        self.reduction = reduction
 
         self._initialize_params()
         self._freeze_params()
@@ -175,31 +173,36 @@ class NormalizedGradientField2d(_Loss):
             target = spatial_filter_nd(target, self.gauss_kernel_y)
 
         # gradient
-        src_grad_u = spatial_filter_nd(source, self.grad_u_kernel)
-        src_grad_v = spatial_filter_nd(source, self.grad_v_kernel)
+        src_grad_u = spatial_filter_nd(source, self.grad_u_kernel) * self.mm_spacing[0]
+        src_grad_v = spatial_filter_nd(source, self.grad_v_kernel) * self.mm_spacing[1]
 
-        tar_grad_u = spatial_filter_nd(target, self.grad_u_kernel)
-        tar_grad_v = spatial_filter_nd(target, self.grad_v_kernel)
+        tar_grad_u = spatial_filter_nd(target, self.grad_u_kernel) * self.mm_spacing[0]
+        tar_grad_v = spatial_filter_nd(target, self.grad_v_kernel) * self.mm_spacing[1]
+
+        if self.eps is None:
+            with torch.no_grad():
+                self.eps = torch.mean(torch.abs(tar_grad_u) + torch.abs(tar_grad_v))
 
         # gradient norm
-        src_grad_norm = src_grad_u ** 2 + src_grad_v ** 2 + self.eps_src
-        tar_grad_norm = tar_grad_u ** 2 + tar_grad_v ** 2 + self.eps_tar
+        src_grad_norm = src_grad_u ** 2 + src_grad_v ** 2 + self.eps ** 2
+        tar_grad_norm = tar_grad_u ** 2 + tar_grad_v ** 2 + self.eps ** 2
 
         # nominator
-        product = src_grad_u * tar_grad_u + src_grad_v * tar_grad_v + self.eps_src + self.eps_tar
+        product = src_grad_u * tar_grad_u + src_grad_v * tar_grad_v
 
         # denominator
         denom = src_grad_norm * tar_grad_norm
 
         # integrator
-        ngf = 1.0 - product ** 2 / denom
+        ngf = -0.5 * (product ** 2 / denom)
+        # ngf = 1.0 - product ** 2 / denom
         # ngf = product**2 / denom
 
         # reshape back
         ngf = ngf.view(b, c, *spatial_shape)
 
         # integration
-        ngf = 0.5 * self.dvol * ngf
+        # ngf = 0.5 * self.dvol * ngf
         # ngf = 0.5 * torch.sum(ngf, dim=(2, 3)) * self.dvol
         # ngf = 0.5 * torch.mean(ngf, dim=(2, 3)) * self.dvol
 
@@ -232,8 +235,7 @@ class NormalizedGradientField3d(_Loss):
                  grad_method: str = 'default',
                  gauss_sigma: float = None,
                  gauss_truncate: float = 4.0,
-                 eps_src: float = 1.0,
-                 eps_tar: float = 1.0,
+                 eps: Optional[float] = 1e-5,
                  mm_spacing: Optional[Union[int, float, Tuple[int, ...], List[int]]] = None,
                  reduction: Union[LossReduction, str] = LossReduction.MEAN) -> None:
         """
@@ -255,14 +257,15 @@ class NormalizedGradientField3d(_Loss):
         """
         super().__init__(reduction=LossReduction(reduction).value)
 
-        self.eps_src = eps_src
-        self.eps_tar = eps_tar
+        self.eps = eps
 
         if isinstance(mm_spacing, (int, float)):
-            self.dvol = mm_spacing ** 3
+            # self.dvol = mm_spacing ** 3
+            self.mm_spacing = [mm_spacing] * 3
         if isinstance(mm_spacing, (list, tuple)):
             if len(mm_spacing) == 3:
-                self.dvol = np.prod(mm_spacing)
+                # self.dvol = np.prod(mm_spacing)
+                self.mm_spacing = mm_spacing
             else:
                 raise ValueError(f'expected length 2 spacing, got {mm_spacing}')
 
@@ -276,8 +279,6 @@ class NormalizedGradientField3d(_Loss):
 
         self.gauss_kernel_x = None
         self.gauss_kernel_y = None
-
-        self.reduction = reduction
 
         self._initialize_params()
         self._freeze_params()
@@ -334,34 +335,38 @@ class NormalizedGradientField3d(_Loss):
             target = spatial_filter_nd(target, self.gauss_kernel_y)
 
         # gradient
-        src_grad_u = spatial_filter_nd(source, self.grad_u_kernel)
-        src_grad_v = spatial_filter_nd(source, self.grad_v_kernel)
-        src_grad_w = spatial_filter_nd(source, self.grad_w_kernel)
+        src_grad_u = spatial_filter_nd(source, self.grad_u_kernel) * self.mm_spacing[0]
+        src_grad_v = spatial_filter_nd(source, self.grad_v_kernel) * self.mm_spacing[1]
+        src_grad_w = spatial_filter_nd(source, self.grad_w_kernel) * self.mm_spacing[2]
 
-        tar_grad_u = spatial_filter_nd(target, self.grad_u_kernel)
-        tar_grad_v = spatial_filter_nd(target, self.grad_v_kernel)
-        tar_grad_w = spatial_filter_nd(target, self.grad_w_kernel)
+        tar_grad_u = spatial_filter_nd(target, self.grad_u_kernel) * self.mm_spacing[0]
+        tar_grad_v = spatial_filter_nd(target, self.grad_v_kernel) * self.mm_spacing[1]
+        tar_grad_w = spatial_filter_nd(target, self.grad_w_kernel) * self.mm_spacing[2]
+
+        if self.eps is None:
+            with torch.no_grad():
+                self.eps = torch.mean(torch.abs(src_grad_u) + torch.abs(src_grad_v) + torch.abs(src_grad_w))
 
         # gradient norm
-        src_grad_norm = src_grad_u ** 2 + src_grad_v ** 2 + src_grad_w ** 2 + self.eps_src
-        tar_grad_norm = tar_grad_u ** 2 + tar_grad_v ** 2 + tar_grad_w ** 2 + self.eps_tar
+        src_grad_norm = src_grad_u ** 2 + src_grad_v ** 2 + src_grad_w ** 2 + self.eps ** 2
+        tar_grad_norm = tar_grad_u ** 2 + tar_grad_v ** 2 + tar_grad_w ** 2 + self.eps ** 2
 
         # nominator
-        product = src_grad_u * tar_grad_u + src_grad_v * tar_grad_v + src_grad_w * tar_grad_w \
-                  + self.eps_src + self.eps_tar
+        product = src_grad_u * tar_grad_u + src_grad_v * tar_grad_v + src_grad_w * tar_grad_w
 
         # denominator
         denom = src_grad_norm * tar_grad_norm
 
         # integrator
-        ngf = 1.0 - product ** 2 / denom
+        ngf = -0.5 * (product ** 2 / denom)
+        # ngf = 1.0 - product ** 2 / denom
         # ngf = product**2 / denom
 
         # reshape back
         ngf = ngf.view(b, c, *spatial_shape)
 
         # integration
-        ngf = 0.5 * self.dvol * ngf
+        # ngf = 0.5 * self.dvol * ngf
         # ngf = 0.5 * torch.sum(ngf, dim=(2, 3)) * self.dvol
         # ngf = 0.5 * torch.mean(ngf, dim=(2, 3)) * self.dvol
 

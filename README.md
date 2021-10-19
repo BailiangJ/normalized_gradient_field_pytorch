@@ -26,3 +26,5 @@ Adopted from repos:
 [ptVreg](https://github.com/visva89/pTVreg/blob/master/mutils/My/image_metrics/metric_ngf.m)
 
 [FAIR.m](https://github.com/C4IR/FAIR.m/blob/master/kernel/distances/NGFdot.m)
+
+[airlab](https://github.com/airlab-unibas/airlab/blob/master/airlab/loss/pairwise.py)
